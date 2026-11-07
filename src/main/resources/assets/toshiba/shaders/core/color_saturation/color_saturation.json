@@ -1,0 +1,11 @@
+{
+  "vertex": "toshiba:core/color_saturation/color_saturation",
+  "fragment": "toshiba:core/color_saturation/color_saturation",
+  "samplers": [
+    { "name": "Sampler0" }
+  ],
+  "uniforms": [
+    { "name": "Saturation", "type": "float", "count": 1, "values": [1.0] },
+    { "name": "HudPass", "type": "float", "count": 1, "values": [0.0] }
+  ]
+}

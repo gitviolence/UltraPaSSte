@@ -1,0 +1,44 @@
+{
+	"schemaVersion": 1,
+	"id": "toshiba",
+	"version": "${modVersion}",
+	"name": "toshiba",
+	"description": "",
+	"authors": [
+		"brovch4ik и мои кенты"
+	],
+	"contact": {
+		"homepage": "https://fabricmc.net/",
+		"sources": "https://github.com/FabricMC/fabric-example-mod"
+	},
+	"license": "CC0-1.0",
+	"icon": "assets/toshiba/icon.png",
+	"environment": "client",
+	"accessWidener": "toshiba.accesswidener",
+	"jars": [
+		{
+			"file": "META-INF/jars/ProxyServer-1.3.jar"
+		}
+	],
+	"entrypoints": {
+		"main": [
+			"brova.toshiba.Toshiba::INSTANCE"
+		]
+	},
+	"mixins": [
+		"toshiba.mixins.json"
+	],
+	"custom": {
+		"modmenu": {
+			"badges": [
+				"library"
+			]
+		}
+	},
+	"depends": {
+		"fabricloader": ">=0.16.0",
+		"minecraft": "~1.21.4",
+		"java": ">=21",
+		"fabric-api": "*"
+	}
+}

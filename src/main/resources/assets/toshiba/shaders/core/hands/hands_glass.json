@@ -1,0 +1,23 @@
+{
+  "vertex": "toshiba:core/kawase_down/kawase_down",
+  "fragment": "toshiba:core/hands/hands_glass",
+  "samplers": [
+    { "name": "Sampler0" },
+    { "name": "Sampler1" },
+    { "name": "Sampler2" },
+    { "name": "Sampler3" }
+  ],
+  "uniforms": [
+    { "name": "ModelViewMat", "type": "matrix4x4", "count": 16, "values": [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0] },
+    { "name": "ProjMat", "type": "matrix4x4", "count": 16, "values": [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0] },
+    { "name": "resolution", "type": "float", "count": 2, "values": [1920.0, 1080.0] },
+    { "name": "color", "type": "float", "count": 3, "values": [0.5, 0.7, 1.0] },
+    { "name": "time", "type": "float", "count": 1, "values": [0.0] },
+    { "name": "transparency", "type": "float", "count": 1, "values": [0.85] },
+    { "name": "distortion", "type": "float", "count": 1, "values": [0.8] },
+    { "name": "speed", "type": "float", "count": 1, "values": [1.0] },
+    { "name": "glow", "type": "float", "count": 1, "values": [1.0] },
+    { "name": "outline", "type": "float", "count": 1, "values": [2.0] },
+    { "name": "blurIntensity", "type": "float", "count": 1, "values": [4.0] }
+  ]
+}

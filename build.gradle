@@ -1,0 +1,95 @@
+plugins {
+    id 'fabric-loom' version '1.15.5'
+}
+
+// Автобамп версии: каждый релизный билд (build/jar/remapJar) повышает патч -
+// 1.0.0 -> 1.0.1 -> 1.0.2 -> ... Номер последней собранной версии хранится в mod_version.
+def releaseTaskNames = ['build', 'assemble', 'jar', 'remapJar', 'publish']
+def isReleaseBuild = gradle.startParameter.taskNames.any { releaseTaskNames.contains(it) }
+
+def versionPropsFile = file('gradle.properties')
+def versionProps = new Properties()
+versionPropsFile.withInputStream { versionProps.load(it) }
+def currentVersion = versionProps.getProperty('mod_version', '1.0.0').trim()
+def versionParts = currentVersion.tokenize('.')
+def nextVersion = currentVersion
+if (versionParts.size() == 3) {
+    nextVersion = "${versionParts[0]}.${versionParts[1]}.${versionParts[2].toInteger() + 1}"
+}
+
+// Релизная сборка получает новый патч, обычный запуск (runClient и т.п.) - текущий номер.
+version = isReleaseBuild ? nextVersion : currentVersion
+group = project.maven_group
+base { archivesName = project.archives_base_name }
+
+repositories { mavenCentral() }
+
+dependencies {
+    minecraft "com.mojang:minecraft:${project.minecraft_version}"
+    mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
+    modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
+    modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+    implementation 'net.java.dev.jna:jna:5.15.0'
+    implementation 'org.jetbrains:annotations:26.0.2'
+    implementation 'io.github.llamalad7:mixinextras-fabric:0.4.1'
+    compileOnly 'com.google.errorprone:error_prone_annotations:2.48.0'
+}
+
+loom {
+    accessWidenerPath = file('src/main/resources/toshiba.accesswidener')
+    runs {
+        client {
+            client()
+            runDir 'run'
+            programArgs '--username', 'ToshibaDev', '--accessToken', '0'
+            vmArg '-Dtoshiba.loader.token='
+        }
+    }
+}
+
+java {
+    toolchain.languageVersion = JavaLanguageVersion.of(21)
+    withSourcesJar()
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+    options.release = 21
+    options.compilerArgs += ['-Xlint:all', '-Werror', '-Xmaxwarns', '5000']
+}
+
+// Версия мода подставляется в fabric.mod.json на лету.
+tasks.named('processResources') {
+    inputs.property('modVersion', provider { version.toString() })
+    filesMatching('fabric.mod.json') {
+        expand(modVersion: version.toString())
+    }
+}
+
+tasks.named('jar') {
+    exclude 'META-INF/MANIFEST.MF'
+}
+
+// После успешной сборки фиксируем новый номер версии в gradle.properties,
+// чтобы следующая сборка получила следующий патч.
+def persistBumpedVersion = {
+    if (nextVersion != currentVersion) {
+        def text = versionPropsFile.getText('UTF-8')
+        versionPropsFile.setText(text.replaceAll(/(?m)^mod_version\s*=.*$/, "mod_version=$nextVersion"), 'UTF-8')
+        logger.lifecycle("Version bumped: ${currentVersion} -> ${nextVersion}")
+    }
+}
+tasks.named('jar') {
+    doLast { persistBumpedVersion() }
+}
+tasks.named('build') {
+    doLast { persistBumpedVersion() }
+}
+
+// Служебная задача: показывает текущий и следующий номер версии.
+tasks.register('showVersion') {
+    doLast {
+        println "Текущая собранная версия: ${currentVersion}"
+        println "Следующая сборка получит:   ${nextVersion}"
+    }
+}
