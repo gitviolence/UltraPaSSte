@@ -11,11 +11,10 @@ uniform vec3 cameraPos;
 
 out vec4 OutColor;
 
-// Направление от камеры до точки мира. Не зависит от поворота камеры (мышь),
-// поэтому картинка не "плывёт" при обзоре - эффект привязан к миру.
-vec3 worldDirection() {
-    return normalize(WorldPos - cameraPos);
-}
+// Эффекты шейдеров клиента (sky_fog, sky_caustic, sky_sunset, sky_nebula) считаются
+// от луча камеры в небо. Для бокса ESP такой луч уходит вниз, и эффект схлопывался
+// в почти чёрный цвет. Поэтому здесь домен эффекта - мировые координаты точки бокса:
+// картинка привязана к миру и не зависит от поворота камеры (мыши).
 
 mat3 rotX(float a) {
     float c = cos(a), s = sin(a);
@@ -79,6 +78,7 @@ vec3 rotateY(vec3 p, float a) {
     return vec3(p.x * c - p.z * s, p.y, p.x * s + p.z * c);
 }
 
+// Каустика из sky_caustic, но по мировой плоскости XZ.
 float caustic(vec2 uv, float t) {
     vec2 p = mod(uv * 6.28318, 6.28318) - 250.0;
     vec2 i = p;
@@ -94,51 +94,22 @@ float caustic(vec2 uv, float t) {
     return clamp(pow(abs(c), 8.0), 0.0, 5.0);
 }
 
-// --- Туман (из sky_fog) ---
-float orb(vec3 p) {
-    float t = time * 4.0;
-    return length(p - vec3(
-            sin(sin(t * 0.2) + t * 0.4) * 6.0,
-            1.0 + sin(sin(t * 0.5) + t * 0.2) * 4.0,
-            12.0 + time + cos(t * 0.3) * 8.0));
-}
-
-vec3 march(vec3 dir) {
-    vec4 o = vec4(0.0);
-    float d = 0.0, e = 0.0, s = 0.0;
-    float t = time;
-    float t07 = 0.7 * t;
-    float t01 = 0.1 * t;
-    vec3 timeOffset = vec3(0.0, 0.0, t);
-
-    for (float i = 0.0; i < 24.0; i += 1.0) {
-        vec3 p = dir * d + timeOffset;
-        e = orb(p) - 0.1;
-
-        float ang = t01 + p.z / 8.0;
-        vec4 rot = cos(ang + vec4(0.0, 33.0, 11.0, 0.0));
-        p.xy = mat2(rot.x, rot.y, rot.z, rot.w) * p.xy;
-
-        s = 4.0 - abs(p.y);
-
-        for (float a = 0.8; a < 16.0; a += a) {
-            p += cos(t07 + p.yzx) * 0.2;
-            s -= abs(dot(sin(t01 + p * a), vec3(0.6))) / a;
-        }
-
-        e = max(0.5 * e, 0.01);
-        s = min(0.03 + 0.2 * abs(s), e);
-        d += s;
-        o += vec4(1.0 / (s + e * 3.0));
+// Слой звёзд из sky_nebula.
+vec3 starLayer(vec3 d, float density, float threshold, vec3 tint) {
+    vec3 p = d * density;
+    vec3 cell = floor(p);
+    float h = hash13(cell);
+    if (h < threshold) {
+        return vec3(0.0);
     }
-
-    o = tanh(o / 10.0);
-    return o.rgb;
+    vec3 f = fract(p) - 0.5;
+    float disc = 1.0 - smoothstep(0.0, 0.045, length(f));
+    float twinkle = 0.65 + 0.35 * sin(time * 2.4 + h * 71.0);
+    return mix(vec3(1.0), tint, 0.22) * disc * twinkle * ((h - threshold) / (1.0 - threshold));
 }
 
 void main() {
     vec3 accent = max(FragColor.rgb, vec3(0.05));
-    vec3 d = worldDirection();
     float t = time * speed;
     vec3 color;
 
@@ -152,33 +123,38 @@ void main() {
         color = mix(accent * 0.55, hot, band);
         color *= 0.45 + 0.55 * sharp;
     } else if (mode < 1.5) {
-        // Туман - шейдер клиента sky_fog
-        color = march(d);
-        color *= mix(vec3(1.0), accent * 1.6, 0.55);
-    } else if (mode < 2.5) {
-        // Каустика - шейдер клиента sky_caustic
-        vec3 deep = accent * 0.05 + vec3(0.005, 0.008, 0.020);
-        vec3 mid = accent * 0.42;
-        vec3 hot = mix(accent, vec3(1.0), 0.55);
+        // Туман - характер sky_fog: клубы, жилы и полосы, но по миру
+        vec2 flow = WorldPos.xz * 0.85 + vec2(t * 0.22, -t * 0.17);
+        float mist = fbm(vec3(flow * 0.72, WorldPos.y * 0.5 - t * 0.25), 4);
+        float veins = pow(clamp(1.0 - abs(fbm(vec3(flow * 1.85 + vec3(mist * 2.5, mist * 1.6), t * 0.3), 3) * 2.0 - 1.0), 0.0, 1.0), 2.4);
 
-        vec2 uv_c = d.xz / (abs(d.y) + 0.30) * 0.50;
+        float stripeA = pow(clamp(1.0 - abs(sin((flow.x * 1.08 + flow.y * 0.42) * 1.7 - t * 0.85 + mist * 4.3)), 0.0, 1.0), 4.8);
+        float stripeB = pow(clamp(1.0 - abs(sin((flow.x * -0.58 + flow.y * 1.12) * 1.45 + t * 0.65 + mist * 2.9)), 0.0, 1.0), 5.4);
+
+        float energy = clamp(mist * 0.35 + veins * 0.85 + stripeA * 0.55 + stripeB * 0.35, 0.0, 1.0);
+        float core = smoothstep(0.15, 0.95, energy);
+        vec3 fogColor = mix(accent * 0.18, mix(accent, vec3(1.0), 0.55), clamp(core * 0.8 + stripeB * 0.2, 0.0, 1.0));
+        color = fogColor * (0.45 + 0.85 * energy);
+    } else if (mode < 2.5) {
+        // Каустика - характер sky_caustic по мировой плоскости
+        vec2 uv_c = WorldPos.xz * 0.32 + vec2(t * 0.05, t * 0.03);
         float c1 = caustic(uv_c, t * 0.30);
         float c2 = caustic(uv_c * 1.30 + vec2(7.3, 11.1), t * 0.234 + 3.1) * 0.55;
         float c = c1 + c2;
 
-        vec3 sky = mix(mid, deep, smoothstep(0.0, 0.75, d.y));
-        float skyMask = smoothstep(-0.05, 0.22, d.y);
-        color = sky + (accent * 0.95 + hot * 0.40) * c * skyMask;
+        vec3 deep = accent * 0.10 + vec3(0.005, 0.008, 0.020);
+        vec3 mid = accent * 0.55;
+        vec3 hot = mix(accent, vec3(1.0), 0.55);
 
-        float core = smoothstep(0.65, 1.6, c);
-        color += hot * core * 0.75;
-
+        color = deep + (accent * 0.95 + hot * 0.40) * c;
+        float core = smoothstep(0.55, 1.5, c);
+        color += hot * core * 0.85;
         color = color / (1.0 + color * 0.55);
         color = pow(color, vec3(0.92));
+        color = mix(color, mid, 0.18);
     } else if (mode < 3.5) {
-        // Закат - шейдер клиента sky_sunset
-        vec3 sunDir = normalize(vec3(0.55 + sin(t * 0.04) * 0.04, 0.07, 0.80 + cos(t * 0.04) * 0.04));
-        float toSun = max(0.0, dot(d, sunDir));
+        // Закат - палитра sky_sunset по высоте над камерой + мерцание
+        float height = clamp((WorldPos.y - cameraPos.y) * 0.6 + 0.45, 0.0, 1.0);
 
         vec3 skyZenith = vec3(0.045, 0.025, 0.165);
         vec3 skyHigh = vec3(0.420, 0.180, 0.420);
@@ -186,53 +162,41 @@ void main() {
         vec3 skyLow = vec3(1.000, 0.620, 0.250);
         vec3 skyEmber = vec3(0.450, 0.050, 0.100);
 
-        vec3 sky;
-        if (d.y > 0.55) {
-            sky = mix(skyHigh, skyZenith, smoothstep(0.55, 1.0, d.y));
-        } else if (d.y > 0.18) {
-            sky = mix(skyMid, skyHigh, smoothstep(0.18, 0.55, d.y));
-        } else if (d.y > 0.0) {
-            sky = mix(skyLow, skyMid, smoothstep(0.0, 0.18, d.y));
-        } else {
-            sky = mix(skyEmber, skyLow, smoothstep(-0.45, 0.0, d.y));
-        }
+        vec3 sky = mix(skyEmber, skyLow, smoothstep(0.0, 0.35, height));
+        sky = mix(sky, skyMid, smoothstep(0.30, 0.62, height));
+        sky = mix(sky, skyHigh, smoothstep(0.58, 0.85, height));
+        sky = mix(sky, skyZenith, smoothstep(0.82, 1.0, height));
 
-        sky = mix(sky, sky * mix(vec3(1.0), accent * 1.6, 0.55), 0.30);
-        sky += vec3(1.00, 0.65, 0.25) * pow(toSun, 8.0) * 0.55;
-        sky += vec3(1.00, 0.85, 0.40) * pow(toSun, 24.0) * 0.85;
+        sky = mix(sky, sky * mix(vec3(1.0), accent * 1.6, 0.45), 0.35);
+        sky += vec3(1.00, 0.65, 0.25) * pow(clamp(height, 0.0, 1.0), 3.0) * 0.45;
 
-        float shimmer = fbm(vec3(d.xz * 4.0, t * 0.6), 3) * 0.04;
-        sky += vec3(1.0, 0.9, 0.7) * shimmer * (1.0 - smoothstep(0.0, 0.4, abs(d.y)));
+        float shimmer = fbm(vec3(WorldPos.xz * 1.6, t * 0.6), 3) * 0.35;
+        sky += vec3(1.0, 0.9, 0.7) * shimmer * (1.0 - smoothstep(0.0, 0.5, abs(height - 0.4)));
 
         color = sky;
         color = color / (1.0 + color * 0.45);
         color = pow(color, vec3(0.92));
     } else {
-        // Туманность - шейдер клиента sky_nebula
-        float vertical = abs(d.y);
-        vec3 deep = accent * 0.16 + vec3(0.004, 0.003, 0.014);
-        vec3 horizon = mix(deep, accent * 0.55, 0.55);
-        color = mix(horizon, deep, smoothstep(0.0, 0.9, vertical));
-
-        vec3 rd = rotateY(d, t * 0.035);
-        vec3 q = rd * 2.0 + vec3(t * 0.035, t * 0.018, -t * 0.025);
+        // Туманность - характер sky_nebula по мировому объёму
+        vec3 q = WorldPos * 0.55 + vec3(t * 0.035, t * 0.018, -t * 0.025);
         float clouds = fbm3(q);
-        float filaments = fbm3(rd * 5.0 + vec3(-t * 0.02, t * 0.03, t * 0.015));
+        float filaments = fbm3(WorldPos * 1.6 + vec3(-t * 0.02, t * 0.03, t * 0.015));
 
-        float nebula = smoothstep(0.42, 0.92, clouds) * 0.78 + smoothstep(0.55, 0.96, filaments) * 0.32;
-        float band = 1.0 - abs(dot(d, normalize(vec3(0.52, 0.25, 0.82)))) * 1.35;
-        band = smoothstep(0.18, 0.9, band);
-        nebula += band * (0.18 + 0.45 * clouds);
+        vec3 deep = accent * 0.22 + vec3(0.004, 0.003, 0.014);
+        vec3 horizon = mix(deep, accent * 0.6, 0.55);
+        color = mix(horizon, deep, smoothstep(0.0, 0.85, clouds));
+
+        float nebula = smoothstep(0.40, 0.90, clouds) * 0.85 + smoothstep(0.52, 0.95, filaments) * 0.40;
 
         vec3 warm = mix(accent, vec3(1.0, 0.54, 0.2), 0.42);
         vec3 cool = mix(accent, vec3(0.16, 0.52, 1.0), 0.45);
         vec3 nebColor = mix(cool, warm, smoothstep(0.2, 0.95, clouds));
         vec3 core = mix(accent * 1.45, vec3(1.0, 0.95, 0.88), 0.35);
-        color += nebColor * nebula * 1.2;
-        color += core * pow(max(nebula - 0.52, 0.0), 1.7) * 1.25;
+        color += nebColor * nebula * 1.35;
+        color += core * pow(max(nebula - 0.5, 0.0), 1.7) * 1.3;
 
-        float horizonGlow = pow(1.0 - smoothstep(0.0, 0.42, abs(d.y)), 1.8);
-        color += mix(deep * 2.0, warm, 0.55) * horizonGlow * 0.35;
+        vec3 starDir = rotateY(normalize(WorldPos - cameraPos + vec3(0.0, 0.5, 0.0)), t * 0.008);
+        color += starLayer(starDir, 12.0, 0.989, mix(accent, vec3(1.0), 0.65)) * (1.0 - nebula * 0.45);
 
         color = color / (1.0 + color * 0.45);
         color = pow(color, vec3(0.92));
