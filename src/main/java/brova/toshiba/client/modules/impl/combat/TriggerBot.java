@@ -122,7 +122,9 @@ public final class TriggerBot extends Module {
     }
 
     private boolean isBreakingBlockWithShouldSuppressCombat() {
-        return mc.currentScreen == null && !mc.interactionManager.isBreakingBlock() && !AutoEat.shouldSuppressCombat() && !this.isInstanceWithItem(CrossbowItem.class) && (!this.weaponOnly.isState() || this.isItem(mc.player.getMainHandStack()) || this.isItem(mc.player.getOffHandStack()));
+        // Бьёт и с открытым инвентарём/меню: экран — чисто клиентское состояние,
+        // пакеты атаки сервер принимает как обычно.
+        return !mc.interactionManager.isBreakingBlock() && !AutoEat.shouldSuppressCombat() && !this.isInstanceWithItem(CrossbowItem.class) && (!this.weaponOnly.isState() || this.isItem(mc.player.getMainHandStack()) || this.isItem(mc.player.getOffHandStack()));
     }
 
     private void updatePushPauseWithSprinting() {

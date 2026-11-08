@@ -139,7 +139,7 @@ public final class AttackAura extends Module {
 
     public final BooleanSetting returnCameraToRotation = new BooleanSetting("Возращать камеру к ротации", false);
 
-    private final ModeSetting moveFix = new ModeSetting("Корекция движения", "Свободная", "Свободная", "Сфокусированная", "Таргетированная", "Slime");
+    private final ModeSetting moveFix = new ModeSetting("Корекция движения", "Свободная", "Свободная", "Сфокусированная", "Таргетированная", "Таргет2");
 
     private final ModeSetting targetPriority = new ModeSetting("Приоритет", "Дистанция", "Дистанция", "Здоровье", "Угол");
 
@@ -197,12 +197,13 @@ public final class AttackAura extends Module {
 
     private int acquireLagTicks = 2;
 
-    private float attackCooldownThreshold = 0.95F + (float) Math.random() * 0.05F;
+    private float attackCooldownThreshold = 0.97F + (float) Math.random() * 0.03F;
 
     // Порог «поймать дугу»: в реальной падающей дуге сервер бьёт критом (×1.5) в любом тике дуги —
-    // ждать полной зарядки до посадки бессмысленно, окно конечное. При 0.78–0.9 заряда удар в дуге
-    // даёт 1.17–1.38 урона от базы — больше, чем полный заряд на земле (×1.0), а окно удара вообще не теряется.
-    private float attackArcThreshold = 0.78F + (float) Math.random() * 0.09F;
+    // ждать полной зарядки до посадки бессмысленно, окно конечное. Порог 0.72–0.82 заряда:
+    // 0.72×1.5 = 1.08 урона от базы — каждый удар в дуге сильнее полного заряда на земле (×1.0),
+    // окно дуги ловится максимально рано. Пол ниже 0.667 (=1.0× ÷ крит) бессмысленен.
+    private float attackArcThreshold = 0.72F + (float) Math.random() * 0.10F;
 
     // Надёжность reach-чека: удар ровно на границе 3.0 улетает в лаг-комп сервера по дистанции
     // и сервер отменяет свинг без урона. Чуть сдвигаем границу внутрь (рероллится с остальными
@@ -347,8 +348,8 @@ public final class AttackAura extends Module {
         if (mc.player != null && this.target != null && !this.rotationType.is("БезРотации") && (directionalInput.getForward() != 0.0F || directionalInput.getStrafe() != 0.0F) && (ModuleRegistry.autoSwap == null || !ModuleRegistry.autoSwap.isLegitSwapInProgress())) {
             if (this.moveFix.is("Свободная")) {
                 MovementUtil.fixMovementFree(directionalInput);
-            } else if (this.moveFix.is("Slime")) {
-                this.updateSlimeMovementCorrections(directionalInput);
+            } else if (this.moveFix.is("Таргет2")) {
+                this.updateTarget2MovementCorrections(directionalInput);
             } else if (this.moveFix.is("Таргетированная")) {
                 double doubleValue = this.target.getX() + -mc.player.getX();
                 double doubleValueValue = this.target.getZ() + -mc.player.getZ();
@@ -376,34 +377,26 @@ public final class AttackAura extends Module {
         }
     }
 
-    private void updateSlimeMovementCorrections(DirectionalInput directionalInput) {
-        // Slime-коррекция: заход на СПИНУ — курс ведём не в лицо, а на точку за спиной противника;
-        // мы уже за спиной (задняя полусфера) — просто вжимаемся в цель. За игрока сами не ходим:
-        // двигаем только перенаправлением удерживаемых клавиш, скорость строго ванильная.
+    private void updateTarget2MovementCorrections(DirectionalInput directionalInput) {
+        // Таргет2 — максимум вжиманья, движением управляет юзер (WASD): курс ведём не в центр цели,
+        // а в БЛИЖАЙШУЮ точку хитбокса + упреждение по скорости цели (0.5 тика вперёд) —
+        // на стрейфе заходим на зарез и держим притык. За игрока сами НЕ ходим: двигаем только
+        // перенаправлением удерживаемых клавиш, скорость строго ванильная.
         LivingEntity livingEntity = this.target;
         if (livingEntity == null || mc.world == null || mc.player.isGliding() || mc.player.getAbilities().flying || mc.player.hasVehicle()) {
             return;
         }
-        double doubleValue = livingEntity.getX() - mc.player.getX();
-        double doubleValueValue = livingEntity.getZ() - mc.player.getZ();
-        // Вектор спины цели (куда «за спину») по её повороту тела.
-        double bodyYawRad = Math.toRadians(livingEntity.getYaw());
-        double backDirX = Math.sin(bodyYawRad);
-        double backDirZ = -Math.cos(bodyYawRad);
-        double toPlayerLen = Math.sqrt(doubleValue * doubleValue + doubleValueValue * doubleValueValue);
-        // Задняя полусфера: «цель → игрок» смотрит ближе к спине, чем к объятию лиц.
-        double dotResult = (-(doubleValue) * backDirX + -(doubleValueValue) * backDirZ) / Math.max(toPlayerLen, 1.0E-4);
-        double desiredYaw;
-        if (dotResult > 0.25) {
-            desiredYaw = MathHelper.wrapDegrees((float) (Math.toDegrees(Math.atan2(doubleValueValue, doubleValue)) + -90.0));
-        } else {
-            // Точка за спиной: цель + вектор спины × L, L = 0.75 дистанции (1.4…3.0) —
-            // на подходе сами выходим на позицию сзади, оттуда — прямое вжиманье.
-            double backOffset = MathHelper.clamp(toPlayerLen * 0.75, 1.4, 3.0);
-            double doubleValueB = livingEntity.getX() + backDirX * backOffset - mc.player.getX();
-            double doubleValueValueB = livingEntity.getZ() + backDirZ * backOffset - mc.player.getZ();
-            desiredYaw = MathHelper.wrapDegrees((float) (Math.toDegrees(Math.atan2(doubleValueValueB, doubleValueB)) + -90.0));
+        Vec3d vel = livingEntity.getVelocity();
+        Box box = livingEntity.getBoundingBox().offset(vel.x * 0.5, vel.y * 0.5, vel.z * 0.5);
+        Vec3d eye = mc.player.getEyePos();
+        Vec3d closest = new Vec3d(MathHelper.clamp(eye.x, box.minX, box.maxX), MathHelper.clamp(eye.y, box.minY, box.maxY), MathHelper.clamp(eye.z, box.minZ, box.maxZ));
+        double doubleValue = closest.x - mc.player.getX();
+        double doubleValueValue = closest.z - mc.player.getZ();
+        if (doubleValue * doubleValue + doubleValueValue * doubleValueValue < 0.01) {
+            doubleValue = livingEntity.getX() - mc.player.getX();
+            doubleValueValue = livingEntity.getZ() - mc.player.getZ();
         }
+        float desiredYaw = MathHelper.wrapDegrees((float) (Math.toDegrees(Math.atan2(doubleValueValue, doubleValue)) + -90.0));
         // Лучший из 8 WASD-комбинаций под курс — та же математика, что в «Таргетированной».
         float bestForward = 0.0F;
         float bestStrafe = 0.0F;
@@ -847,7 +840,7 @@ public final class AttackAura extends Module {
             if (this.target != null) {
                 lastTarget = this.target;
                 targetAcquiredAge = mc.player.age;
-                acquireLagTicks = 1 + (int) (Math.random() * 3.0);
+                acquireLagTicks = 1 + (int) (Math.random() * 2.0);
             }
         }
     }
@@ -893,11 +886,11 @@ public final class AttackAura extends Module {
                 this.resetAresMineRotation.onAttack();
             }
             // Идеальное КД + лучшая микро-рандомизация, без настроек:
-            // порог кулдауна сам дрейфует каждый цикл (0.95–1.00 — полный заряд, урон не теряется),
+            // порог кулдауна сам дрейфует каждый цикл (0.97–1.00 — полный заряд, урон не теряется),
             // а пауза между ударами идёт узким «человеческим» окном с редкими микро-паузами —
             // постоянного периода нет, статистика ачей периодичность не вытаскивает.
-            this.attackCooldownThreshold = 0.95F + (float) Math.random() * 0.05F;
-            this.attackArcThreshold = 0.78F + (float) Math.random() * 0.09F;
+            this.attackCooldownThreshold = 0.97F + (float) Math.random() * 0.03F;
+            this.attackArcThreshold = 0.72F + (float) Math.random() * 0.10F;
             this.attackReachMargin = 0.05F + (float) Math.random() * 0.13F;
             long longValue = (long) (430.0F * (0.92F + Math.random() * 0.14F));
             if (Math.random() < 0.10) {
@@ -1225,7 +1218,7 @@ public final class AttackAura extends Module {
             // Полный заряд на КАЖДОМ ударе: реальный прогресс (без +1.5-тиковой заводки) —
             // никакого скрытого среза урона, сила удара 0.95–1.0 от полной.
             // Исключение — чистая падающая дуга (isVanillaArcFalling, сервер даст крит ×1.5):
-            // удар по дуга-порогу (0.78–0.9 заряда) даёт 1.17–1.38 урона от базы — больше полной
+            // удар по дуга-порогу (0.72–0.82 заряда) даёт 1.08–1.23 урона от базы — больше полной
             // зарядки на земле (×1.0), и конечное окно дуги больше не проскакивает зря.
             float progressValue = mc.player.getAttackCooldownProgress(0.0F);
             boolean flagArc = isVanillaArcFalling() && progressValue >= this.attackArcThreshold;

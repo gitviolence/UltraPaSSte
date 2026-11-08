@@ -1,7 +1,6 @@
 package brova.toshiba.mixin;
 
 import brova.toshiba.client.core.PanicController;
-import brova.toshiba.client.configs.AutoConfigLoader;
 import brova.toshiba.client.event.EventBus;
 import brova.toshiba.client.event.impl.BlockBreakingEvent;
 import brova.toshiba.client.event.impl.ClientTickEndEvent;
@@ -10,6 +9,7 @@ import brova.toshiba.client.event.impl.GameUpdateEvent;
 import brova.toshiba.client.event.impl.ScreenEvent;
 import brova.toshiba.client.gui.click.ClickGuiScreen;
 import brova.toshiba.client.modules.ModuleRegistry;
+import brova.toshiba.client.modules.impl.combat.TapeMouse;
 import brova.toshiba.client.modules.impl.render.ShaderESP;
 import brova.toshiba.client.utils.render.WorldFramebufferRenderer;
 import brova.toshiba.client.utils.time.FpsTracker;
@@ -18,6 +18,7 @@ import java.lang.reflect.InvocationTargetException;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gl.Framebuffer;
 import net.minecraft.client.gui.screen.Screen;
+import net.minecraft.client.option.InactivityFpsLimit;
 import net.minecraft.entity.Entity;
 import net.minecraft.util.Util;
 import org.spongepowered.asm.mixin.Mixin;
@@ -38,6 +39,12 @@ public abstract class MinecraftClientMixin {
 
     @Unique
     private int accumulatedCalls = 0;
+
+    @Unique
+    private InactivityFpsLimit toshiba$savedInactivityFpsLimit;
+
+    @Unique
+    private Boolean toshiba$savedPauseOnLostFocus;
 
     @Inject(method = "getFramebuffer", at = @At("HEAD"), cancellable = true)
     private void toshiba$redirectHudFramebuffer(CallbackInfoReturnable<Framebuffer> cir) {
@@ -92,6 +99,7 @@ public abstract class MinecraftClientMixin {
 
     @Inject(method = "render", at = @At("HEAD"))
     private void render(boolean tick, CallbackInfo ci) throws InvocationTargetException, IllegalAccessException, InstantiationException {
+        this.toshiba$applyBackgroundFpsOverride();
         if (!EventBus.hasListeners(GameUpdateEvent.class)) {
             this.lastHookTime = Util.getMeasuringTimeNano();
             this.accumulatedCalls = 0;
@@ -103,6 +111,42 @@ public abstract class MinecraftClientMixin {
             for (this.accumulatedCalls = Math.min(this.accumulatedCalls, 240); this.accumulatedCalls > 0; this.accumulatedCalls--) {
                 EventBus.invoke(new GameUpdateEvent());
             }
+        }
+    }
+
+    @Unique
+    private void toshiba$applyBackgroundFpsOverride() {
+        TapeMouse tapeMouse = ModuleRegistry.tapeMouse;
+        if (tapeMouse == null) {
+            return;
+        }
+        MinecraftClient client = (MinecraftClient) (Object) this;
+        if (client.options == null) {
+            return;
+        }
+        boolean active = tapeMouse.isEnable() && tapeMouse.getForceUnlimitedFps().isState();
+        boolean hidden = !client.isWindowFocused() || client.getWindow() != null && client.getWindow().isMinimized();
+        // Принудительно: в фоне запреляем автопаузу и лимит фпс — применимые опции бесполезны,
+        // игра просто обходится. Тот же результат у обеих веток минимузда/афк-лимита.
+        if (hidden && active) {
+            if (this.toshiba$savedInactivityFpsLimit == null) {
+                this.toshiba$savedInactivityFpsLimit = client.options.getInactivityFpsLimit().getValue();
+            }
+            if (this.toshiba$savedPauseOnLostFocus == null) {
+                this.toshiba$savedPauseOnLostFocus = client.options.pauseOnLostFocus;
+            }
+            client.options.getInactivityFpsLimit().setValue(InactivityFpsLimit.MINIMIZED);
+            client.options.pauseOnLostFocus = false;
+            client.options.getInactivityFpsLimit().setValue(InactivityFpsLimit.AFK);
+        } else if (this.toshiba$savedInactivityFpsLimit != null || this.toshiba$savedPauseOnLostFocus != null) {
+            if (this.toshiba$savedInactivityFpsLimit != null) {
+                client.options.getInactivityFpsLimit().setValue(this.toshiba$savedInactivityFpsLimit);
+            }
+            if (this.toshiba$savedPauseOnLostFocus != null) {
+                client.options.pauseOnLostFocus = this.toshiba$savedPauseOnLostFocus;
+            }
+            this.toshiba$savedInactivityFpsLimit = null;
+            this.toshiba$savedPauseOnLostFocus = null;
         }
     }
 
@@ -124,16 +168,6 @@ public abstract class MinecraftClientMixin {
             if (event.isCancelled()) {
                 ci.cancel();
             }
-        }
-    }
-
-    /** При закрытии игры сохраняем текущее состояние, чтобы в следующий раз зайти с теми же настройками. */
-    @Inject(method = "stop", at = @At("HEAD"))
-    private void toshiba$onStop(CallbackInfo ci) {
-        try {
-            AutoConfigLoader.saveCurrentState();
-        } catch (Throwable failure) {
-            System.err.println("[MinecraftClientMixin] " + failure.getMessage());
         }
     }
 }

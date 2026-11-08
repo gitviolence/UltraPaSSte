@@ -59,7 +59,9 @@ public class SlimeRotation extends RotationModeBase implements MinecraftAccess {
 
     private Vec3d cachedAimPoint;
 
-    private Vec3d targetPrevPosition;
+    // Офсет точки прицела от ног цели: точка жёстко привязана к телу (никакой интеграции
+    // дрейфов) и чуть опережает тело по скорости — стрейфы ведём с полутиковым упреждением.
+    private Vec3d aimOffset;
 
     private LivingEntity aimEntity;
 
@@ -87,7 +89,7 @@ public class SlimeRotation extends RotationModeBase implements MinecraftAccess {
         this.driftYaw = 0.0F;
         this.rayOnTarget = false;
         this.cachedAimPoint = null;
-        this.targetPrevPosition = null;
+        this.aimOffset = null;
         this.aimEntity = null;
         this.strengthCeiling = 0.24F;
         this.strengthFloor = 0.14F;
@@ -127,14 +129,6 @@ public class SlimeRotation extends RotationModeBase implements MinecraftAccess {
                 this.updateYawWithPitch(entity, rotation);
             }
             Box box = entity.getBoundingBox().expand(0.05);
-            Vec3d eyePos = mc.player.getEyePos();
-            boolean flag = mc.player.isGliding() && box.raycast(new Vec3d(mc.player.prevX, mc.player.prevY, mc.player.prevZ), mc.player.getPos()).isPresent();
-            boolean flagValue = flag || box.contains(eyePos) || mc.player.getBoundingBox().intersects(box);
-            float floatValue = this.calculateFloat(1.0F - MathHelper.clamp((float) (this.calculateSqrt(eyePos, box) / 0.9), 0.0F, 1.0F));
-            if (flagValue) {
-                floatValue = 1.0F;
-            }
-            rotation = this.createVec2fFromLerpWithSignum(rotation, floatValue);
             float errYaw = MathHelper.wrapDegrees(rotation.x - this.yaw);
             float errPitch = rotation.y - this.pitch;
             float magnitude = Math.abs(errYaw);
@@ -145,19 +139,20 @@ public class SlimeRotation extends RotationModeBase implements MinecraftAccess {
                 this.cachedCount--;
             }
             boolean flagItem = EntityRaycastUtil.rayTrace(mc.player.getRotationVector(this.pitch, this.yaw), 6.0, box);
-            boolean attackWindow = mc.player.getAttackCooldownProgress(0.0F) > 0.9F;
+            boolean attackWindow = mc.player.getAttackCooldownProgress(0.0F) > 0.85F;
             // Мощная доводка: без моторной инерции — шаг прямо пропорционален ошибке. Коэффициент
-            // 0.85–1.0 (рероллится по циклу силы как «человеческая» вариация темпа; в окне готового
-            // КД строго 1.0) → схождение за 1–3 тика, к каждому удару прицел уже на точке.
-            // Капы 30–44°/тик: большие развороты закрываются за 3–5 тиков, в бою кэп почти не упирается.
-            float yawStepFactor = attackWindow ? 1.0F : 0.85F + 0.15F * strengthFactor;
-            float pitchStepFactor = attackWindow ? 1.0F : 0.83F + 0.17F * strengthFactor;
-            float yawCap = 30.0F + 14.0F * strengthFactor;
-            float pitchCap = yawCap * 0.35F;
+            // 0.92–1.0 (рероллится по циклу силы как «человеческая» вариация темпа; в окне готового
+            // КД строго 1.0) → схождение за 1–2 тика, к каждому удару прицел уже на точке.
+            // Капы 46–64°/тик yaw и до ~28°/тик pitch: разворот на 180° закрывается за 3 тика,
+            // стрейфы цели держится напрямую, в бою кэп фактически не упирается.
+            float yawStepFactor = attackWindow ? 1.0F : 0.92F + 0.08F * strengthFactor;
+            float pitchStepFactor = attackWindow ? 1.0F : 0.90F + 0.10F * strengthFactor;
+            float yawCap = 46.0F + 18.0F * strengthFactor;
+            float pitchCap = yawCap * 0.44F;
             // Джиттер пропорционален дистанции до точки: далеко — лёгкое покачивание, в точке —
             // тишина. Промахов не вызывает, сигнатура движения — не «робот-шаг».
-            float yawNoise = (float) this.threadLocalRandom.nextGaussian() * Math.min(magnitude, 1.5F) * 0.22F;
-            float pitchNoise = (float) this.threadLocalRandom.nextGaussian() * Math.min(magnitudeValue, 1.0F) * 0.22F;
+            float yawNoise = (float) this.threadLocalRandom.nextGaussian() * Math.min(magnitude, 1.5F) * 0.12F;
+            float pitchNoise = (float) this.threadLocalRandom.nextGaussian() * Math.min(magnitudeValue, 1.0F) * 0.12F;
             float floatValueCopy = this.yaw + MathHelper.clamp(errYaw * yawStepFactor + yawNoise, -yawCap, yawCap);
             float floatValue2 = this.pitch + MathHelper.clamp(errPitch * pitchStepFactor + pitchNoise, -pitchCap, pitchCap);
             // Запоминаем: луч этого тика на хитбоксе или нет — точка прицела следует за телом,
@@ -176,18 +171,17 @@ public class SlimeRotation extends RotationModeBase implements MinecraftAccess {
             this.aimEntity = entity;
             position = resolvedPoint;
         } else {
-            if (this.aimEntity != entity || this.cachedAimPoint == null || !this.rayOnTarget) {
-                // Новая цель, сброс или потерянный луч — точка собирается заново (с инсетом в тело).
-                this.cachedAimPoint = this.createInsetAimPoint(entity);
-            } else {
-                // Точка едёт вместе с телом цели: сдвиг тика докидываем на место —
-                // по стоящей цели крест стоит ровно в одной точке, по бегущей не отстаёт.
-                this.cachedAimPoint = this.cachedAimPoint.add(entity.getPos().subtract(this.targetPrevPosition));
+            if (this.aimEntity != entity || this.aimOffset == null || !this.rayOnTarget) {
+                // Новая цель, сброс или потерянный луч — точка собирается заново (с инсетом в тело):
+                // запоминаем офсет от ног цели — дальше точка жёстко едет вместе с телом.
+                this.aimOffset = this.createInsetAimPoint(entity).subtract(entity.getPos());
+                this.aimEntity = entity;
             }
-            this.aimEntity = entity;
+            // Точка привязана к телу (офсет от ног) + лёгкое упреждение по скорости (0.3 тика):
+            // по стоящей цели крест мёртв в одной точке, по стрейфящейся ведётся с опережением.
+            this.cachedAimPoint = entity.getPos().add(this.aimOffset).add(entity.getVelocity().multiply(0.3));
             position = this.cachedAimPoint;
         }
-        this.targetPrevPosition = entity.getPos();
         if (this.shouldUseElytraPredict(entity)) {
             position = this.getPredictedPoint(entity, position);
         }
@@ -195,31 +189,13 @@ public class SlimeRotation extends RotationModeBase implements MinecraftAccess {
     }
 
     private Vec3d createInsetAimPoint(LivingEntity entity) {
-        // Свежая мультиточка затягивается на 25% к центру хитбокса: краевые точки держат луч
-        // на самом берегу бокса — офсет GCD-квантования и лагов сервера сводит удар «в пустоту»
-        // (свинг без урона). Внутри тела промахов нет, зрительно всё то же самое.
+        // Мультиточка затягивается на 50% к центру хитбокса: точка сидит глубоко в торсе с
+        // максимальным запасом луча до краёв — GCD-уровни и лаг-комп не сводят свинг «в пустоту»,
+        // зрительно прицел всё равно на теле цели.
         Box box = entity.getBoundingBox();
         Vec3d position = RotationPointUtil.getMultipoint(entity, 128.0);
         Vec3d center = box.getCenter();
-        return new Vec3d(MathHelper.lerp(0.25, position.x, center.x), MathHelper.lerp(0.25, position.y, center.y), MathHelper.lerp(0.25, position.z, center.z));
-    }
-
-    private Vec2f createVec2fFromLerpWithSignum(Vec2f rotation, float floatValue) {
-        if (floatValue <= 0.0F) {
-            this.x = rotation.x;
-            this.y = rotation.y;
-            return rotation;
-        } else {
-            float floatValueValue = MathHelper.wrapDegrees(rotation.x - this.x);
-            float floatValueResult = rotation.y - this.y;
-            float interpolatedValue = MathHelper.lerp(floatValue, 8.0F, 2.15F);
-            float interpolatedValueValue = MathHelper.lerp(floatValue, 2.8F, 0.52F);
-            float floatValueItem = floatValueValue * MathHelper.lerp(floatValue, 0.74F, 0.39F) + Math.signum(floatValueValue) * Math.min(floatValueValue * floatValueValue * 0.0025F, 0.45F);
-            float floatValueEntry = floatValueResult * MathHelper.lerp(floatValue, 0.66F, 0.29F) + Math.signum(floatValueResult) * Math.min(floatValueResult * floatValueResult * 0.003F, 0.16F);
-            this.x = this.x + MathHelper.clamp(floatValueItem, -interpolatedValue, interpolatedValue);
-            this.y = this.y + MathHelper.clamp(floatValueEntry, -interpolatedValueValue, interpolatedValueValue);
-            return new Vec2f(this.x, this.y);
-        }
+        return new Vec3d(MathHelper.lerp(0.5, position.x, center.x), MathHelper.lerp(0.5, position.y, center.y), MathHelper.lerp(0.5, position.z, center.z));
     }
 
     private void updateFloat(float floatValue) {
