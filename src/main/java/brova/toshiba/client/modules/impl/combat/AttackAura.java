@@ -109,9 +109,9 @@ public final class AttackAura extends Module {
 
     public final ModeSetting rotationType = new ModeSetting("Ротация", "Shard", "ReallyWorld", "Shard", "Slime", "Neuro", "SpookyTime", "БезРотации");
 
-    // Множитель агрессии ротации: разгоняет капы скорости и коэффициенты доводки
-    // (Shard и Slime). 1.0 — прежнее поведение, выше — прицел ведёт цель жёстче и быстрее.
-    public final FloatSetting rotationStrength = new FloatSetting("Сила ротации", 1.35F, 1.0F, 2.5F, 0.05F);
+    // Рейдж-множитель ротации: 1.0 — легит-поведение (дефолт), выше — жёстче побыстрее
+    // для рейдж-фраз. Все множители при 1.0 нейтральны, детект не меняется.
+    public final FloatSetting rotationStrength = new FloatSetting("Рейдж множитель", 1.0F, 1.0F, 2.5F, 0.05F);
 
     private final MultiSetting targetTypes = new MultiSetting("Таргеты", new BooleanSetting("Игроки", true), new BooleanSetting("Голые", true), new BooleanSetting("Инвизки", true), new BooleanSetting("Мобы", true), new BooleanSetting("Животные", false), new BooleanSetting("Друзья", false));
 
