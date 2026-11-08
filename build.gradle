@@ -36,7 +36,7 @@ dependencies {
 }
 
 loom {
-    accessWidenerPath = file('src/main/resources/toshiba.accesswidener')
+    accessWidenerPath = file('src/main/resources/viafabricplus.accesswidener')
     runs {
         client {
             client()

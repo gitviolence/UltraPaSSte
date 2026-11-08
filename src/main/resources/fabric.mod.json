@@ -1,8 +1,8 @@
 {
 	"schemaVersion": 1,
-	"id": "toshiba",
+	"id": "viafabricplus",
 	"version": "${modVersion}",
-	"name": "toshiba",
+	"name": "ViaFabricPlus",
 	"description": "",
 	"authors": [
 		"brovch4ik и мои кенты"
@@ -14,7 +14,7 @@
 	"license": "CC0-1.0",
 	"icon": "assets/toshiba/icon.png",
 	"environment": "client",
-	"accessWidener": "toshiba.accesswidener",
+	"accessWidener": "viafabricplus.accesswidener",
 	"jars": [
 		{
 			"file": "META-INF/jars/ProxyServer-1.3.jar"
@@ -26,7 +26,7 @@
 		]
 	},
 	"mixins": [
-		"toshiba.mixins.json"
+		"viafabricplus.mixins.json"
 	],
 	"custom": {
 		"modmenu": {
