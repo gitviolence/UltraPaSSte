@@ -106,7 +106,7 @@ public class SlimeRotation extends RotationModeBase implements MinecraftAccess {
             this.lastUpdateTimestamp = lastUpdateTimestamp;
             this.cachedCount = 1;
             this.decelerating = false;
-            this.rotationStrength = Math.max(this.rotationStrength, 0.18F);
+            this.rotationStrength = Math.max(this.rotationStrength, 0.18F * Math.max(1.0F, this.attackAura.getRotationStrength()));
             this.yawMomentum *= 0.88F;
             this.pitchMomentum *= 0.86F;
         }
@@ -143,11 +143,12 @@ public class SlimeRotation extends RotationModeBase implements MinecraftAccess {
             // Мощная доводка: без моторной инерции — шаг прямо пропорционален ошибке. Коэффициент
             // 0.92–1.0 (рероллится по циклу силы как «человеческая» вариация темпа; в окне готового
             // КД строго 1.0) → схождение за 1–2 тика, к каждому удару прицел уже на точке.
-            // Капы 46–64°/тик yaw и до ~28°/тик pitch: разворот на 180° закрывается за 3 тика,
-            // стрейфы цели держится напрямую, в бою кэп фактически не упирается.
-            float yawStepFactor = attackWindow ? 1.0F : 0.92F + 0.08F * strengthFactor;
-            float pitchStepFactor = attackWindow ? 1.0F : 0.90F + 0.10F * strengthFactor;
-            float yawCap = 46.0F + 18.0F * strengthFactor;
+            // «Сила ротации» добавляет к коэффициенту и разгоняет капы (46–64°/тик × множитель),
+            // разворот на 180° закрывается за 1–2 тика, стрейфы ведутся с запасом.
+            float aggression = Math.max(1.0F, this.attackAura.getRotationStrength());
+            float yawStepFactor = attackWindow ? 1.0F : MathHelper.clamp(0.92F + 0.08F * strengthFactor + (aggression - 1.0F) * 0.15F, 0.92F, 1.0F);
+            float pitchStepFactor = attackWindow ? 1.0F : MathHelper.clamp(0.90F + 0.10F * strengthFactor + (aggression - 1.0F) * 0.15F, 0.90F, 1.0F);
+            float yawCap = (46.0F + 18.0F * strengthFactor) * aggression;
             float pitchCap = yawCap * 0.44F;
             // Джиттер пропорционален дистанции до точки: далеко — лёгкое покачивание, в точке —
             // тишина. Промахов не вызывает, сигнатура движения — не «робот-шаг».
@@ -236,7 +237,7 @@ public class SlimeRotation extends RotationModeBase implements MinecraftAccess {
         this.pitchMomentum = 0.0F;
         // Свежая наводка не стартует с нулевой «силы»: как и после удара, разгон сразу с 0.18 —
         // прицел ведёт цель с первого тика вместо 2–3 тиков полумёртвого ползания.
-        this.rotationStrength = Math.max(this.rotationStrength, 0.18F);
+        this.rotationStrength = Math.max(this.rotationStrength, 0.18F * Math.max(1.0F, this.attackAura.getRotationStrength()));
         this.rotationDirection = true;
     }
 

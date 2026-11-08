@@ -109,6 +109,10 @@ public final class AttackAura extends Module {
 
     public final ModeSetting rotationType = new ModeSetting("Ротация", "Shard", "ReallyWorld", "Shard", "Slime", "Neuro", "SpookyTime", "БезРотации");
 
+    // Множитель агрессии ротации: разгоняет капы скорости и коэффициенты доводки
+    // (Shard и Slime). 1.0 — прежнее поведение, выше — прицел ведёт цель жёстче и быстрее.
+    public final FloatSetting rotationStrength = new FloatSetting("Сила ротации", 1.35F, 1.0F, 2.5F, 0.05F);
+
     private final MultiSetting targetTypes = new MultiSetting("Таргеты", new BooleanSetting("Игроки", true), new BooleanSetting("Голые", true), new BooleanSetting("Инвизки", true), new BooleanSetting("Мобы", true), new BooleanSetting("Животные", false), new BooleanSetting("Друзья", false));
 
     private final FloatSetting range = new FloatSetting("Дистанция атаки", 3.0F, 0.0F, 6.0F, 0.05F);
@@ -288,7 +292,12 @@ public final class AttackAura extends Module {
 
     public AttackAura() {
         super("AttackAura", "Автоматически наводиться и бьёт протививника.", ModuleCategory.COMBAT);
-        this.addSettings(this.rotationType, this.targetTypes, this.range, this.extraRange, this.onlyCrits, this.smartCrit, this.sprintResetMode, this.pauseWhileEating, this.pauseInInventory, this.swordOnly, this.throughWalls, this.wallCheckBypass, this.releaseShield, this.breakShields, this.returnCameraToRotation, this.moveFix, this.targetPriority);
+        this.addSettings(this.rotationType, this.rotationStrength, this.targetTypes, this.range, this.extraRange, this.onlyCrits, this.smartCrit, this.sprintResetMode, this.pauseWhileEating, this.pauseInInventory, this.swordOnly, this.throughWalls, this.wallCheckBypass, this.releaseShield, this.breakShields, this.returnCameraToRotation, this.moveFix, this.targetPriority);
+    }
+
+    // Агрессия ротации: клампим снизу на 1.0 — только усиление, ослабить через слайдер нельзя.
+    public float getRotationStrength() {
+        return Math.max(1.0F, this.rotationStrength.getValue().floatValue());
     }
 
     public boolean usesShardRotation() {

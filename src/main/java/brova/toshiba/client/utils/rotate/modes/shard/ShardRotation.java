@@ -162,18 +162,20 @@ public class ShardRotation extends RotationModeBase implements MinecraftAccess {
                 Vec2f rotation = this.createVec2fFromSubtractWithCenter(livingEntity);
                 boolean flagValue = mc.player.getAttackCooldownProgress(1.0F) > 0.9F && this.attackAura.getWhiteRiseTicksToAttack() <= 1;
                 this.updateVec2f(rotation, flag, threadLocalRandom);
+                // Агрессия: множитель «Сила ротации» — гонит скорость доводки, разгона и отклика.
+                float aggression = this.attackAura.getRotationStrength();
                 float clampedValueValue = MathHelper.clamp(this.motionStrength / this.motionDuration, 0.0F, 1.0F);
                 if (clampedValueValue == 0.0F) {
                     this.updateUpdate(flag);
                 } else {
                     float floatValue = this.motionStrength * (flagValue ? 1.0F + 0.45F * startValueStochasticRotationParameters.boostSpeedScale.value : 1.0F);
                     floatValue *= MathHelper.clamp(1.0F + this.speedNoise * 0.85F, 0.85F, 1.15F);
-                    floatValue = MathHelper.clamp(floatValue, 0.0F, (gliding ? 0.552F : 0.408F) * startValueStochasticRotationParameters.maximumSpeedScale.value) * 0.95F * startValueStochasticRotationParameters.overallSpeedScale.value;
+                    floatValue = MathHelper.clamp(floatValue, 0.0F, (gliding ? 0.552F : 0.408F) * startValueStochasticRotationParameters.maximumSpeedScale.value) * 0.95F * startValueStochasticRotationParameters.overallSpeedScale.value * aggression;
                     float floatValueValue = floatValue * (0.89F + this.speedNoise * 1.11F) * startValueStochasticRotationParameters.yawSpeedScale.value;
                     float floatValueResult = Math.min(floatValue * 0.69451F * startValueStochasticRotationParameters.pitchSpeedLimitScale.value, floatValueValue * 0.413F * startValueStochasticRotationParameters.pitchToYawSpeedScale.value);
                     float floatValueItem = 0.9F + threadLocalRandom.nextFloat() * 0.2F;
-                    float floatValueEntry = (gliding ? 86.4F : (flagValue ? 38.4F : 28.8F)) * floatValueItem * startValueStochasticRotationParameters.yawAccelerationScale.value;
-                    float floatValueCopy = (gliding ? 14.4F : (flagValue ? 5.4F : 3.36F)) * floatValueItem * startValueStochasticRotationParameters.pitchAccelerationScale.value;
+                    float floatValueEntry = (gliding ? 86.4F : (flagValue ? 38.4F : 28.8F)) * floatValueItem * startValueStochasticRotationParameters.yawAccelerationScale.value * aggression;
+                    float floatValueCopy = (gliding ? 14.4F : (flagValue ? 5.4F : 3.36F)) * floatValueItem * startValueStochasticRotationParameters.pitchAccelerationScale.value * aggression;
                     float floatValue2 = 4.8F * startValueStochasticRotationParameters.rotationStepLimitScale.value;
                     float floatValue3 = this.calculateNextFloatWithSignum(MathHelper.wrapDegrees(rotation.x - this.smoothedYaw), floatValueEntry, threadLocalRandom);
                     float floatValue4 = this.calculateNextFloatWithSignum(rotation.y - this.smoothedPitch, floatValueCopy, threadLocalRandom);
@@ -182,8 +184,8 @@ public class ShardRotation extends RotationModeBase implements MinecraftAccess {
                     float floatValue7 = 0.4F * startValueStochasticRotationParameters.errorThresholdScale.value;
                     float floatValue8 = floatValue7 + (1.0F - floatValue7) * Math.min(Math.abs(floatValue3) / floatValue5, 1.0F);
                     float floatValue9 = floatValue7 + (1.0F - floatValue7) * Math.min(Math.abs(floatValue4) / floatValue6, 1.0F);
-                    float floatValue10 = (0.16F + threadLocalRandom.nextFloat() * 0.08F) * startValueStochasticRotationParameters.yawResponseScale.value * floatValue8;
-                    float floatValue11 = (0.45F + threadLocalRandom.nextFloat() * 0.15F) * startValueStochasticRotationParameters.pitchResponseScale.value * floatValue9;
+                    float floatValue10 = (0.16F + threadLocalRandom.nextFloat() * 0.08F) * startValueStochasticRotationParameters.yawResponseScale.value * floatValue8 * (0.6F + 0.4F * aggression);
+                    float floatValue11 = (0.45F + threadLocalRandom.nextFloat() * 0.15F) * startValueStochasticRotationParameters.pitchResponseScale.value * floatValue9 * (0.6F + 0.4F * aggression);
                     float floatValue12 = 0.55F * startValueStochasticRotationParameters.noisePersistenceScale.value;
                     float floatValue13 = (0.006F + Math.abs(this.yawVelocity) * 0.012F * startValueStochasticRotationParameters.velocityNoiseCouplingScale.value) * startValueStochasticRotationParameters.yawNoiseAmplitudeScale.value;
                     float floatValue14 = (0.02F + Math.abs(this.pitchVelocity) * 0.05F * startValueStochasticRotationParameters.velocityNoiseCouplingScale.value) * startValueStochasticRotationParameters.pitchNoiseAmplitudeScale.value;
@@ -258,7 +260,7 @@ public class ShardRotation extends RotationModeBase implements MinecraftAccess {
         this.accelerating = AccelerationPhase.ACCELERATING;
         this.initializationPending = false;
         this.recoveryPending = false;
-        this.motionDuration = (flag ? 0.27F : 0.18F) * (0.92F + threadLocalRandom.nextFloat() * 0.16F);
+        this.motionDuration = (flag ? 0.27F : 0.18F) * (0.92F + threadLocalRandom.nextFloat() * 0.16F) * (1.0F - Math.min(0.35F, (this.attackAura.getRotationStrength() - 1.0F) * 0.15F));
         this.accelerationDuration = flag ? 0.085F + threadLocalRandom.nextFloat() * 0.05F : 0.12F + threadLocalRandom.nextFloat() * 0.075F;
         this.decelerationDuration = flag ? 0.115F + threadLocalRandom.nextFloat() * 0.08F : 0.155F + threadLocalRandom.nextFloat() * 0.095F;
         this.updateGliding(rotation);
