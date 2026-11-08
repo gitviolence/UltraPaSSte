@@ -53,6 +53,12 @@ public class SlimeRotation extends RotationModeBase implements MinecraftAccess {
 
     private float driftYaw;
 
+    // Непрерывность скорости: прошлый применённый шаг. Шаг сглаживается по нему —
+    // без мгновенных разворотов дельты и «жёсткого стопа» (Grim порет срывы скорости).
+    private float lastStepYaw;
+
+    private float lastStepPitch;
+
     // Пришитая точка прицела: одна точка на теле цели едёт вместе с телом (по стоящей цели
     // голова стоит ровно в одной точке — без блуждания по телу), при потере луча пересобирается.
     private boolean rayOnTarget;
@@ -91,6 +97,8 @@ public class SlimeRotation extends RotationModeBase implements MinecraftAccess {
         this.cachedAimPoint = null;
         this.aimOffset = null;
         this.aimEntity = null;
+        this.lastStepYaw = 0.0F;
+        this.lastStepPitch = 0.0F;
         this.strengthCeiling = 0.24F;
         this.strengthFloor = 0.14F;
         if (mc.player != null) {
@@ -140,22 +148,36 @@ public class SlimeRotation extends RotationModeBase implements MinecraftAccess {
             }
             boolean flagItem = EntityRaycastUtil.rayTrace(mc.player.getRotationVector(this.pitch, this.yaw), 6.0, box);
             boolean attackWindow = mc.player.getAttackCooldownProgress(0.0F) > 0.85F;
-            // Мощная доводка: без моторной инерции — шаг прямо пропорционален ошибке. Коэффициент
-            // 0.92–1.0 (рероллится по циклу силы как «человеческая» вариация темпа; в окне готового
-            // КД строго 1.0) → схождение за 1–2 тика, к каждому удару прицел уже на точке.
-            // «Сила ротации» добавляет к коэффициенту и разгоняет капы (46–64°/тик × множитель),
-            // разворот на 180° закрывается за 1–2 тика, стрейфы ведутся с запасом.
+            // Легит-профиль по новый Grim: доводка без «идеального пропорционального контролёра».
+            // База коэффициента 0.72–0.87 (бывший 0.92–1.0 — пасти-ровная скорость каждый тик = сигнатура),
+            // дом — слегка рандомный (0.96–0.99 вместо жёсткой 1.0 — атак-тик не идёт с максимальным
+            // шагом), капы как были (46–64°/тик × рейдж-множитель), pitch-доля 0.38 — pitch-дельты
+            // меньше там, где aches режут первыми.
             float aggression = Math.max(1.0F, this.attackAura.getRotationStrength());
-            float yawStepFactor = attackWindow ? 1.0F : MathHelper.clamp(0.92F + 0.08F * strengthFactor + (aggression - 1.0F) * 0.15F, 0.92F, 1.0F);
-            float pitchStepFactor = attackWindow ? 1.0F : MathHelper.clamp(0.90F + 0.10F * strengthFactor + (aggression - 1.0F) * 0.15F, 0.90F, 1.0F);
+            float yawStepFactor = attackWindow
+                ? MathHelper.clamp(0.96F + this.threadLocalRandom.nextFloat() * 0.03F + (aggression - 1.0F) * 0.05F, 0.96F, 1.0F)
+                : MathHelper.clamp(0.72F + 0.15F * strengthFactor + (aggression - 1.0F) * 0.28F, 0.72F, 1.0F);
+            float pitchStepFactor = attackWindow
+                ? MathHelper.clamp(yawStepFactor - this.threadLocalRandom.nextFloat() * 0.02F, 0.90F, 1.0F)
+                : MathHelper.clamp(0.68F + 0.15F * strengthFactor + (aggression - 1.0F) * 0.28F, 0.68F, 0.98F);
             float yawCap = (46.0F + 18.0F * strengthFactor) * aggression;
-            float pitchCap = yawCap * 0.44F;
+            float pitchCap = yawCap * 0.38F;
             // Джиттер пропорционален дистанции до точки: далеко — лёгкое покачивание, в точке —
             // тишина. Промахов не вызывает, сигнатура движения — не «робот-шаг».
             float yawNoise = (float) this.threadLocalRandom.nextGaussian() * Math.min(magnitude, 1.5F) * 0.12F;
             float pitchNoise = (float) this.threadLocalRandom.nextGaussian() * Math.min(magnitudeValue, 1.0F) * 0.12F;
-            float floatValueCopy = this.yaw + MathHelper.clamp(errYaw * yawStepFactor + yawNoise, -yawCap, yawCap);
-            float floatValue2 = this.pitch + MathHelper.clamp(errPitch * pitchStepFactor + pitchNoise, -pitchCap, pitchCap);
+            // Непрерывность скорости: сырой шаг сглаживается по прошлому (0.78 нового + 0.22 старого;
+            // в окне удара сглаживания чуть меньше, длина шага сохраняется). Без мгновенных инверсий,
+            // старт/стоп плавный — как реальная рука на мыши, линейный контролёр Grim не видит.
+            float smoothing = attackWindow ? 0.12F : 0.22F;
+            float rawYawStep = MathHelper.clamp(errYaw * yawStepFactor + yawNoise, -yawCap, yawCap);
+            float rawPitchStep = MathHelper.clamp(errPitch * pitchStepFactor + pitchNoise, -pitchCap, pitchCap);
+            rawYawStep = this.lastStepYaw * smoothing + rawYawStep * (1.0F - smoothing);
+            rawPitchStep = this.lastStepPitch * smoothing + rawPitchStep * (1.0F - smoothing);
+            this.lastStepYaw = rawYawStep;
+            this.lastStepPitch = rawPitchStep;
+            float floatValueCopy = this.yaw + rawYawStep;
+            float floatValue2 = this.pitch + rawPitchStep;
             // Запоминаем: луч этого тика на хитбоксе или нет — точка прицела следует за телом,
             // а при потере луча пересобирается (не смотрим в пустоту, промахов нет).
             this.rayOnTarget = flagItem;
@@ -235,6 +257,8 @@ public class SlimeRotation extends RotationModeBase implements MinecraftAccess {
         this.y = rotation.y;
         this.yawMomentum = 0.0F;
         this.pitchMomentum = 0.0F;
+        this.lastStepYaw = 0.0F;
+        this.lastStepPitch = 0.0F;
         // Свежая наводка не стартует с нулевой «силы»: как и после удара, разгон сразу с 0.18 —
         // прицел ведёт цель с первого тика вместо 2–3 тиков полумёртвого ползания.
         this.rotationStrength = Math.max(this.rotationStrength, 0.18F * Math.max(1.0F, this.attackAura.getRotationStrength()));
