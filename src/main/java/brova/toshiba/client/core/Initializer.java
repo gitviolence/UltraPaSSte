@@ -1,8 +1,8 @@
 package brova.toshiba.client.core;
 
 import brova.toshiba.Toshiba;
+import brova.toshiba.client.configs.AutoConfigLoader;
 import brova.toshiba.client.configs.ConfigManager;
-import brova.toshiba.client.configs.ConfigResult;
 import brova.toshiba.client.configs.LocalConfigStorage;
 import brova.toshiba.client.event.EventBus;
 import brova.toshiba.client.storages.implement.CommandStorage;
@@ -21,27 +21,6 @@ public class Initializer implements MinecraftAccess {
     public void onInitialize() {
         EventBus.register(this);
         this.initStorages();
-        this.loadLastSavedConfig();
-    }
-
-    /** При старте клиента подтягиваем последний сохранённый локальный конфиг. */
-    private void loadLastSavedConfig() {
-        LocalConfigStorage storage = Toshiba.INSTANCE.localConfigStorage;
-        if (storage == null) {
-            return;
-        }
-        try {
-            String json = storage.loadLastSaved();
-            if (json == null || json.isBlank()) {
-                return;
-            }
-            ConfigResult result = ConfigManager.apply(json);
-            if (!result.successful()) {
-                System.err.println("[Toshiba] Last config was not applied: " + result.message());
-            }
-        } catch (Throwable failure) {
-            System.err.println("[Toshiba] Failed to load the last config: " + failure.getMessage());
-        }
     }
 
     public void initStorages() {
@@ -69,6 +48,7 @@ public class Initializer implements MinecraftAccess {
         Toshiba.INSTANCE.waypointStorage = new WaypointStorage();
         Toshiba.INSTANCE.commandStorage = new CommandStorage();
         Toshiba.INSTANCE.localConfigStorage = new LocalConfigStorage();
+        EventBus.register(new AutoConfigLoader());
         brova.toshiba.client.utils.runtime.AccessGuard.invokeVoid(null, new Object[] {}, (accessReceiver, accessArguments) -> {
             ConfigManager.captureDefaults();
         });

@@ -6,6 +6,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
@@ -60,8 +61,41 @@ public final class LocalConfigStorage {
         }
     }
 
-    /** Имя последнего сохранённого конфига или null. */
+    /**
+     * Имя активного конфига: по указателю last.txt, а если его нет - самый свежий файл в папке.
+     * Так автозагрузка работает и для конфигов, сохранённых до появления указателя.
+     */
     public String getLastSavedName() {
+        String pointer = this.readPointer();
+        if (pointer != null && this.exists(pointer)) {
+            return pointer;
+        }
+        return this.getNewestName();
+    }
+
+    /** Делает конфиг активным: именно он загрузится при следующем входе в мир. */
+    public void setActiveName(String name) {
+        if (isValidName(name) && this.exists(name)) {
+            this.writeLastPointer(name);
+        }
+    }
+
+    /** Самый свежий по времени изменения конфиг или null. */
+    public String getNewestName() {
+        if (!Files.isDirectory(this.directory)) {
+            return null;
+        }
+        try (Stream<Path> stream = Files.list(this.directory)) {
+            return stream.filter(Files::isRegularFile).map(path -> path.getFileName().toString()).filter(name -> name.endsWith(EXTENSION))
+                    .max(Comparator.comparingLong(name -> this.directory.resolve(name).toFile().lastModified()))
+                    .map(name -> name.substring(0, name.length() - EXTENSION.length())).orElse(null);
+        } catch (IOException failure) {
+            System.err.println("[LocalConfigStorage] " + failure.getMessage());
+            return null;
+        }
+    }
+
+    private String readPointer() {
         try {
             Path pointer = this.directory.resolve(LAST_POINTER);
             if (!Files.isRegularFile(pointer)) {

@@ -1,6 +1,7 @@
 package brova.toshiba.mixin;
 
 import brova.toshiba.client.core.PanicController;
+import brova.toshiba.client.configs.AutoConfigLoader;
 import brova.toshiba.client.event.EventBus;
 import brova.toshiba.client.event.impl.BlockBreakingEvent;
 import brova.toshiba.client.event.impl.ClientTickEndEvent;
@@ -123,6 +124,16 @@ public abstract class MinecraftClientMixin {
             if (event.isCancelled()) {
                 ci.cancel();
             }
+        }
+    }
+
+    /** При закрытии игры сохраняем текущее состояние, чтобы в следующий раз зайти с теми же настройками. */
+    @Inject(method = "stop", at = @At("HEAD"))
+    private void toshiba$onStop(CallbackInfo ci) {
+        try {
+            AutoConfigLoader.saveCurrentState();
+        } catch (Throwable failure) {
+            System.err.println("[MinecraftClientMixin] " + failure.getMessage());
         }
     }
 }

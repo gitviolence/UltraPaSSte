@@ -294,7 +294,6 @@ public final class ConfigManager {
         var iterator = ModuleRegistry.INSTANCE.getObject().iterator();
         while (iterator.hasNext()) {
             Module module = iterator.next();
-            module.setEnabled(false);
             module.setOpen(false);
             JsonObject jsonValue = asJsonObject.has(brova.toshiba.client.utils.runtime.AccessGuard.invoke(module, new Object[] {}, (accessReceiver, accessArguments) -> ((Module) accessReceiver).getName())) ? asJsonObject.getAsJsonObject(module.getName()) : null;
             if (jsonValue == null) {
@@ -357,10 +356,13 @@ public final class ConfigManager {
             }
         }
         for (var entryValue : identityHashMap.entrySet()) {
-            if (entryValue.getValue()) {
-                Module key = entryValue.getKey();
-                boolean flag = true;
-                brova.toshiba.client.utils.runtime.AccessGuard.invokeVoid(key, new Object[] { flag }, (accessReceiver, accessArguments) -> {
+            Module module = entryValue.getKey();
+            boolean desired = entryValue.getValue();
+            // Меняем состояние только у тех модулей, которые реально отличаются от конфига:
+            // иначе при автозагрузке сыпались бы уведомления и двойная регистрация событий.
+            if (module.isEnable() != desired) {
+                boolean flag = desired;
+                brova.toshiba.client.utils.runtime.AccessGuard.invokeVoid(module, new Object[] { flag }, (accessReceiver, accessArguments) -> {
                     ((Module) accessReceiver).setEnabled(((boolean) accessArguments[0]));
                 });
             }

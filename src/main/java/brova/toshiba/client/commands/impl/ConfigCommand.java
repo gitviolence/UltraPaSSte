@@ -106,6 +106,7 @@ public final class ConfigCommand extends CommandBase {
             return;
         }
         ConfigResult result = ConfigManager.apply(json);
+        storage.setActiveName(name);
         ChatUtil.sendMessage((result.successful() ? "Конфиг " + name + " применён." : "Не удалось применить конфиг " + name + ": ") + result.message());
     }
 
