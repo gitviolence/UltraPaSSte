@@ -24,6 +24,7 @@ import net.minecraft.client.render.VertexFormats;
 import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.LivingEntity;
+import net.minecraft.entity.decoration.ArmorStandEntity;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.util.math.Box;
 import net.minecraft.util.math.MathHelper;
@@ -33,9 +34,14 @@ import org.joml.Matrix4f;
 /**
  * Простой ESP по сущностям: 3D бокс вокруг мобов и игроков.
  * Полностью независим от ShaderESP - это отдельный модуль со своими настройками.
- * Заливка бокса умеет рисоваться обычным цветом или собственным шейдером.
+ * Заливка бокса умеет рисоваться обычным цветом или шейдерами клиента.
  */
 public final class ESP extends Module {
+
+    /** Допуск, в пределах которого два бокса считаются одним и тем же объектом. */
+    private static final float DUPLICATE_RANGE = 0.4F;
+
+    private static final float DUPLICATE_VERTICAL_GAP = 0.8F;
 
     private final MultiSetting targets = new MultiSetting("Цели", new BooleanSetting("Игроки", true), new BooleanSetting("Мобы", true));
 
@@ -49,7 +55,7 @@ public final class ESP extends Module {
 
     private final BooleanSetting filledBox = new BooleanSetting("Бокс с заливкой", false);
 
-    private final ModeSetting fillMode = new ModeSetting("Тип заливки", "Обычная", "Обычная", "Шейдер");
+    private final ModeSetting fillMode = new ModeSetting("Тип заливки", "Обычная", "Обычная", "Волна", "Туман", "Каустика", "Закат", "Туманность");
 
     private final ColorSetting fillColor = new ColorSetting("Цвет заливки", 0xFFFF5555);
 
@@ -68,7 +74,7 @@ public final class ESP extends Module {
         this.fillMode.visible(() -> this.filledBox.isState());
         this.fillColor.visible(() -> this.filledBox.isState());
         this.fillTransparency.visible(() -> this.filledBox.isState());
-        this.shaderSpeed.visible(() -> this.filledBox.isState() && this.fillMode.is("Шейдер"));
+        this.shaderSpeed.visible(() -> this.filledBox.isState() && !this.fillMode.is("Обычная"));
         this.addSettings(this.targets, this.distance, this.box, this.lineWidth, this.boxColor, this.filledBox, this.fillMode, this.fillColor, this.fillTransparency, this.shaderSpeed, this.throughWalls);
     }
 
@@ -109,7 +115,7 @@ public final class ESP extends Module {
         RenderSystem.depthMask(false);
 
         if (drawFill) {
-            this.renderFill(matrix);
+            this.renderFill(matrix, cameraPos);
         }
 
         if (drawBox) {
@@ -131,14 +137,14 @@ public final class ESP extends Module {
         matrices.pop();
     }
 
-    /** Заливка бокса: обычным цветом или шейдером. */
-    private void renderFill(Matrix4f matrix) {
+    /** Заливка бокса: обычным цветом или одним из шейдеров клиента. */
+    private void renderFill(Matrix4f matrix, Vec3d cameraPos) {
         int color = this.fillColor.getColor();
         float alpha = (color >>> 24) / 255.0F * MathHelper.clamp(this.fillTransparency.get(), 0.0F, 1.0F);
         float red = (color >> 16 & 0xFF) / 255.0F;
         float green = (color >> 8 & 0xFF) / 255.0F;
         float blue = (color & 0xFF) / 255.0F;
-        boolean shaderFill = this.fillMode.is("Шейдер");
+        boolean shaderFill = !this.fillMode.is("Обычная");
         ShaderProgram program = null;
         if (shaderFill) {
             program = mc.getShaderLoader().getOrCreateProgram(ShaderPrograms.espFill);
@@ -146,6 +152,8 @@ public final class ESP extends Module {
                 this.updateUniform(program, "time", (float) (System.currentTimeMillis() % 100000L) / 1000.0F);
                 this.updateUniform(program, "speed", this.shaderSpeed.get());
                 this.updateUniform(program, "intensity", 1.0F);
+                this.updateUniform(program, "mode", this.getShaderMode());
+                this.updateUniform(program, "cameraPos", (float) cameraPos.x, (float) cameraPos.y, (float) cameraPos.z);
                 RenderSystem.setShader(ShaderPrograms.espFill);
             } else {
                 shaderFill = false;
@@ -162,6 +170,17 @@ public final class ESP extends Module {
         RenderSystem.setShader(ShaderProgramKeys.POSITION_COLOR);
     }
 
+    /** Номер режима шейдера заливки. */
+    private float getShaderMode() {
+        return switch (this.fillMode.getCurrent()) {
+            case "Туман" -> 1.0F;
+            case "Каустика" -> 2.0F;
+            case "Закат" -> 3.0F;
+            case "Туманность" -> 4.0F;
+            default -> 0.0F;
+        };
+    }
+
     private void updateUniform(ShaderProgram shaderProgram, String text, float floatValue) {
         GlUniform uniform = shaderProgram.getUniform(text);
         if (uniform != null) {
@@ -169,7 +188,20 @@ public final class ESP extends Module {
         }
     }
 
-    /** Собирает габариты всех подходящих сущностей с учётом интерполяции между тиками. */
+    private void updateUniform(ShaderProgram shaderProgram, String text, float floatValue, float floatValueValue, float floatValueResult) {
+        GlUniform uniform = shaderProgram.getUniform(text);
+        if (uniform != null) {
+            uniform.set(floatValue, floatValueValue, floatValueResult);
+        }
+    }
+
+    /**
+     * Собирает габариты всех подходящих сущностей с учётом интерполяции между тиками.
+     *
+     * Серверные кликабельные NPC часто спавнятся вместе с маркерной сущностью в той же
+     * точке - из-за этого бокс рисуется дважды. Поэтому одинаковые по позиции боксы
+     * отбрасываются, а маркерные сущности проверяются в последнюю очередь.
+     */
     private void collectBoxes(float tickDelta) {
         this.boxes.clear();
         double maxDistance = this.distance.get();
@@ -179,8 +211,17 @@ public final class ESP extends Module {
         if (!showPlayers && !showMobs) {
             return;
         }
-        for (Entity entity : mc.world.getEntities()) {
+        this.addBoxes(mc.world.getEntities(), tickDelta, showPlayers, showMobs, maxDistanceSquared, false);
+        this.addBoxes(mc.world.getEntities(), tickDelta, showPlayers, showMobs, maxDistanceSquared, true);
+    }
+
+    private void addBoxes(Iterable<Entity> entities, float tickDelta, boolean showPlayers, boolean showMobs, double maxDistanceSquared, boolean markers) {
+        for (Entity entity : entities) {
             if (!(entity instanceof LivingEntity living) || entity == mc.player || entity.isRemoved()) {
+                continue;
+            }
+            boolean marker = entity instanceof ArmorStandEntity;
+            if (marker != markers) {
                 continue;
             }
             boolean player = entity instanceof PlayerEntity;
@@ -197,18 +238,40 @@ public final class ESP extends Module {
                 continue;
             }
             Box box = entity.getBoundingBox();
-            double offsetX = MathHelper.lerp(tickDelta, entity.lastRenderX, entity.getX()) - entity.getX();
-            double offsetY = MathHelper.lerp(tickDelta, entity.lastRenderY, entity.getY()) - entity.getY();
-            double offsetZ = MathHelper.lerp(tickDelta, entity.lastRenderZ, entity.getZ()) - entity.getZ();
-            this.boxes.add(new float[] {
+            double offsetX = MathHelper.lerp(tickDelta, entity.prevX, entity.getX()) - entity.getX();
+            double offsetY = MathHelper.lerp(tickDelta, entity.prevY, entity.getY()) - entity.getY();
+            double offsetZ = MathHelper.lerp(tickDelta, entity.prevZ, entity.getZ()) - entity.getZ();
+            float[] bounds = new float[] {
                     (float) (box.minX + offsetX),
                     (float) (box.minY + offsetY),
                     (float) (box.minZ + offsetZ),
                     (float) (box.maxX + offsetX),
                     (float) (box.maxY + offsetY),
                     (float) (box.maxZ + offsetZ)
-            });
+            };
+            if (this.isDuplicate(bounds)) {
+                continue;
+            }
+            this.boxes.add(bounds);
         }
+    }
+
+    /** Проверяет, не совпадает ли бокс с уже добавленным (NPC + маркер в одной точке). */
+    private boolean isDuplicate(float[] candidate) {
+        float centerX = (candidate[0] + candidate[3]) * 0.5F;
+        float centerZ = (candidate[2] + candidate[5]) * 0.5F;
+        for (float[] other : this.boxes) {
+            float otherX = (other[0] + other[3]) * 0.5F;
+            float otherZ = (other[2] + other[5]) * 0.5F;
+            if (Math.abs(centerX - otherX) > DUPLICATE_RANGE || Math.abs(centerZ - otherZ) > DUPLICATE_RANGE) {
+                continue;
+            }
+            float gap = Math.max(0.0F, Math.max(candidate[1] - other[4], other[1] - candidate[4]));
+            if (gap <= DUPLICATE_VERTICAL_GAP) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private void appendFilledBox(BufferBuilder buffer, Matrix4f matrix, float[] box, float red, float green, float blue, float alpha) {
