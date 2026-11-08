@@ -30,6 +30,7 @@ import brova.toshiba.client.modules.impl.misc.FakePlayer;
 import brova.toshiba.client.modules.impl.misc.NameProtect;
 import brova.toshiba.client.modules.impl.misc.ServerHelper;
 import brova.toshiba.client.modules.impl.misc.SpaceJoiner;
+import brova.toshiba.client.modules.impl.render.ESP;
 import brova.toshiba.client.modules.impl.movement.AirStuck;
 import brova.toshiba.client.modules.impl.movement.Fly;
 import brova.toshiba.client.modules.impl.movement.FreeCam;
@@ -81,7 +82,6 @@ import brova.toshiba.client.modules.impl.render.SaturationEat;
 import brova.toshiba.client.modules.impl.render.SeeInvisibles;
 import brova.toshiba.client.modules.impl.render.ShaderESP;
 import brova.toshiba.client.modules.impl.render.ShaderHands;
-import brova.toshiba.client.modules.impl.render.SimpleESP;
 import brova.toshiba.client.modules.impl.render.ShulkerPreview;
 import brova.toshiba.client.modules.impl.render.Souls;
 import brova.toshiba.client.modules.impl.render.SpinBot;
@@ -215,7 +215,7 @@ public class ModuleRegistry extends ObjectStorage<Module> {
 
     public static final ShaderHands shaderHands = ShaderHands.INSTANCE;
 
-    public static final SimpleESP simpleEsp = new SimpleESP();
+    public static final ESP esp = new ESP();
 
     public static final ShulkerPreview shulkerPreview = ShulkerPreview.INSTANCE;
 
@@ -340,7 +340,7 @@ public class ModuleRegistry extends ObjectStorage<Module> {
             seeInvisibles,
             shaderEsp,
             shaderHands,
-            simpleEsp,
+            esp,
             shulkerPreview,
             souls,
             speed,

@@ -85,6 +85,8 @@ public final class ShaderPrograms implements MinecraftAccess {
 
     public static final ShaderProgramKey fogBlurComposite = createShaderProgramKeyFromText("fogblur", "composite", VertexFormats.POSITION_TEXTURE_COLOR);
 
+    public static final ShaderProgramKey espFill = createShaderProgramKeyFromText("esp", "fill", VertexFormats.POSITION_COLOR);
+
     private static ShaderProgramKey createShaderProgramKeyFromText(String text, String textValue, VertexFormat vertexFormat) {
         return new ShaderProgramKey(Identifier.of("toshiba", "core/" + text + "/" + textValue), vertexFormat, Defines.EMPTY);
     }

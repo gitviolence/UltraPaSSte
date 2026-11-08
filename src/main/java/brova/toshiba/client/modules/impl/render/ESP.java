@@ -8,9 +8,13 @@ import brova.toshiba.client.settings.impl.BooleanSetting;
 import brova.toshiba.client.settings.impl.ColorSetting;
 import brova.toshiba.client.settings.impl.FloatSetting;
 import brova.toshiba.client.settings.impl.ModeSetting;
+import brova.toshiba.client.settings.impl.MultiSetting;
+import brova.toshiba.client.utils.render.shader.ShaderPrograms;
 import com.mojang.blaze3d.systems.RenderSystem;
 import java.util.ArrayList;
 import java.util.List;
+import net.minecraft.client.gl.GlUniform;
+import net.minecraft.client.gl.ShaderProgram;
 import net.minecraft.client.gl.ShaderProgramKeys;
 import net.minecraft.client.render.BufferBuilder;
 import net.minecraft.client.render.BufferRenderer;
@@ -29,36 +33,43 @@ import org.joml.Matrix4f;
 /**
  * Простой ESP по сущностям: 3D бокс вокруг мобов и игроков.
  * Полностью независим от ShaderESP - это отдельный модуль со своими настройками.
+ * Заливка бокса умеет рисоваться обычным цветом или собственным шейдером.
  */
-public final class SimpleESP extends Module {
+public final class ESP extends Module {
 
-    private final ModeSetting targets = new ModeSetting("Цели", "Игроки и мобы", "Игроки и мобы", "Только игроки", "Только мобы");
+    private final MultiSetting targets = new MultiSetting("Цели", new BooleanSetting("Игроки", true), new BooleanSetting("Мобы", true));
 
     private final FloatSetting distance = new FloatSetting("Дистанция", 64.0F, 1.0F, 120.0F, 1.0F);
 
     private final BooleanSetting box = new BooleanSetting("Бокс", true);
 
-    private final BooleanSetting filledBox = new BooleanSetting("Бокс с заливкой", false);
-
     private final FloatSetting lineWidth = new FloatSetting("Ширина бокса", 1.5F, 0.5F, 4.0F, 0.1F);
 
     private final ColorSetting boxColor = new ColorSetting("Цвет бокса", 0xFFFF5555);
+
+    private final BooleanSetting filledBox = new BooleanSetting("Бокс с заливкой", false);
+
+    private final ModeSetting fillMode = new ModeSetting("Тип заливки", "Обычная", "Обычная", "Шейдер");
 
     private final ColorSetting fillColor = new ColorSetting("Цвет заливки", 0xFFFF5555);
 
     private final FloatSetting fillTransparency = new FloatSetting("Прозрачность заливки", 0.35F, 0.0F, 1.0F, 0.01F);
 
+    private final FloatSetting shaderSpeed = new FloatSetting("Скорость шейдера", 1.2F, 0.1F, 5.0F, 0.1F);
+
     private final BooleanSetting throughWalls = new BooleanSetting("Через стены", true);
 
     private final List<float[]> boxes = new ArrayList<>();
 
-    public SimpleESP() {
-        super("SimpleESP", "Простой ESP по мобам и игрокам", ModuleCategory.RENDER);
-        this.boxColor.visible(() -> this.box.isState());
+    public ESP() {
+        super("ESP", "Простой ESP по мобам и игрокам", ModuleCategory.RENDER);
         this.lineWidth.visible(() -> this.box.isState());
+        this.boxColor.visible(() -> this.box.isState());
+        this.fillMode.visible(() -> this.filledBox.isState());
         this.fillColor.visible(() -> this.filledBox.isState());
         this.fillTransparency.visible(() -> this.filledBox.isState());
-        this.addSettings(this.targets, this.distance, this.box, this.filledBox, this.lineWidth, this.boxColor, this.fillColor, this.fillTransparency, this.throughWalls);
+        this.shaderSpeed.visible(() -> this.filledBox.isState() && this.fillMode.is("Шейдер"));
+        this.addSettings(this.targets, this.distance, this.box, this.lineWidth, this.boxColor, this.filledBox, this.fillMode, this.fillColor, this.fillTransparency, this.shaderSpeed, this.throughWalls);
     }
 
     @Override
@@ -96,21 +107,15 @@ public final class SimpleESP extends Module {
             RenderSystem.enableDepthTest();
         }
         RenderSystem.depthMask(false);
-        RenderSystem.setShader(ShaderProgramKeys.POSITION_COLOR);
 
         if (drawFill) {
-            int color = this.fillColor.getColor();
-            float alpha = (color >>> 24) / 255.0F * MathHelper.clamp(this.fillTransparency.get(), 0.0F, 1.0F);
-            BufferBuilder buffer = Tessellator.getInstance().begin(DrawMode.QUADS, VertexFormats.POSITION_COLOR);
-            for (float[] box : this.boxes) {
-                this.appendFilledBox(buffer, matrix, box, (color >> 16 & 0xFF) / 255.0F, (color >> 8 & 0xFF) / 255.0F, (color & 0xFF) / 255.0F, alpha);
-            }
-            BufferRenderer.drawWithGlobalProgram(buffer.end());
+            this.renderFill(matrix);
         }
 
         if (drawBox) {
             int color = this.boxColor.getColor();
             float alpha = (color >>> 24) / 255.0F;
+            RenderSystem.setShader(ShaderProgramKeys.POSITION_COLOR);
             RenderSystem.lineWidth(this.lineWidth.get());
             BufferBuilder buffer = Tessellator.getInstance().begin(DrawMode.DEBUG_LINES, VertexFormats.POSITION_COLOR);
             for (float[] box : this.boxes) {
@@ -126,22 +131,63 @@ public final class SimpleESP extends Module {
         matrices.pop();
     }
 
+    /** Заливка бокса: обычным цветом или шейдером. */
+    private void renderFill(Matrix4f matrix) {
+        int color = this.fillColor.getColor();
+        float alpha = (color >>> 24) / 255.0F * MathHelper.clamp(this.fillTransparency.get(), 0.0F, 1.0F);
+        float red = (color >> 16 & 0xFF) / 255.0F;
+        float green = (color >> 8 & 0xFF) / 255.0F;
+        float blue = (color & 0xFF) / 255.0F;
+        boolean shaderFill = this.fillMode.is("Шейдер");
+        ShaderProgram program = null;
+        if (shaderFill) {
+            program = mc.getShaderLoader().getOrCreateProgram(ShaderPrograms.espFill);
+            if (program != null) {
+                this.updateUniform(program, "time", (float) (System.currentTimeMillis() % 100000L) / 1000.0F);
+                this.updateUniform(program, "speed", this.shaderSpeed.get());
+                this.updateUniform(program, "intensity", 1.0F);
+                RenderSystem.setShader(ShaderPrograms.espFill);
+            } else {
+                shaderFill = false;
+            }
+        }
+        if (!shaderFill) {
+            RenderSystem.setShader(ShaderProgramKeys.POSITION_COLOR);
+        }
+        BufferBuilder buffer = Tessellator.getInstance().begin(DrawMode.QUADS, VertexFormats.POSITION_COLOR);
+        for (float[] box : this.boxes) {
+            this.appendFilledBox(buffer, matrix, box, red, green, blue, alpha);
+        }
+        BufferRenderer.drawWithGlobalProgram(buffer.end());
+        RenderSystem.setShader(ShaderProgramKeys.POSITION_COLOR);
+    }
+
+    private void updateUniform(ShaderProgram shaderProgram, String text, float floatValue) {
+        GlUniform uniform = shaderProgram.getUniform(text);
+        if (uniform != null) {
+            uniform.set(floatValue);
+        }
+    }
+
     /** Собирает габариты всех подходящих сущностей с учётом интерполяции между тиками. */
     private void collectBoxes(float tickDelta) {
         this.boxes.clear();
         double maxDistance = this.distance.get();
         double maxDistanceSquared = maxDistance * maxDistance;
-        boolean onlyPlayers = this.targets.is("Только игроки");
-        boolean onlyMobs = this.targets.is("Только мобы");
+        boolean showPlayers = this.targets.is("Игроки");
+        boolean showMobs = this.targets.is("Мобы");
+        if (!showPlayers && !showMobs) {
+            return;
+        }
         for (Entity entity : mc.world.getEntities()) {
             if (!(entity instanceof LivingEntity living) || entity == mc.player || entity.isRemoved()) {
                 continue;
             }
             boolean player = entity instanceof PlayerEntity;
-            if (onlyPlayers && !player) {
+            if (player && !showPlayers) {
                 continue;
             }
-            if (onlyMobs && player) {
+            if (!player && !showMobs) {
                 continue;
             }
             if (!living.isAlive() && !player) {
