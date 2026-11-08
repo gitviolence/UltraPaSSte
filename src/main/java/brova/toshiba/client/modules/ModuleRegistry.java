@@ -81,6 +81,7 @@ import brova.toshiba.client.modules.impl.render.SaturationEat;
 import brova.toshiba.client.modules.impl.render.SeeInvisibles;
 import brova.toshiba.client.modules.impl.render.ShaderESP;
 import brova.toshiba.client.modules.impl.render.ShaderHands;
+import brova.toshiba.client.modules.impl.render.SimpleESP;
 import brova.toshiba.client.modules.impl.render.ShulkerPreview;
 import brova.toshiba.client.modules.impl.render.Souls;
 import brova.toshiba.client.modules.impl.render.SpinBot;
@@ -214,6 +215,8 @@ public class ModuleRegistry extends ObjectStorage<Module> {
 
     public static final ShaderHands shaderHands = ShaderHands.INSTANCE;
 
+    public static final SimpleESP simpleEsp = new SimpleESP();
+
     public static final ShulkerPreview shulkerPreview = ShulkerPreview.INSTANCE;
 
     public static final Souls souls = Souls.INSTANCE;
@@ -337,6 +340,7 @@ public class ModuleRegistry extends ObjectStorage<Module> {
             seeInvisibles,
             shaderEsp,
             shaderHands,
+            simpleEsp,
             shulkerPreview,
             souls,
             speed,
