@@ -70,6 +70,15 @@ tasks.named('jar') {
     exclude 'META-INF/MANIFEST.MF'
 }
 
+// Имя собираемой джарки. Переименовывается только файл сборки - id мода, папка
+// toshiba/configs, mixin-конфиг и остальное остаются прежними.
+tasks.named('jar') {
+    archiveBaseName = 'ViaFabricPlus'
+}
+tasks.named('remapJar') {
+    archiveBaseName = 'ViaFabricPlus'
+}
+
 // После успешной сборки фиксируем новый номер версии в gradle.properties,
 // чтобы следующая сборка получила следующий патч.
 def persistBumpedVersion = {
