@@ -1,0 +1,25 @@
+{
+  "vertex": "toshiba:core/position_texture_color",
+  "fragment": "toshiba:core/sky/sky_severnoesiyanie",
+  "samplers": [],
+  "uniforms": [
+    { "name": "ModelViewMat", "type": "matrix4x4", "count": 16, "values": [ 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0 ] },
+    { "name": "ProjMat",      "type": "matrix4x4", "count": 16, "values": [ 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0 ] },
+    { "name": "Time",       "type": "float", "count": 1, "values": [ 0.0 ] },
+    { "name": "uTime",      "type": "float", "count": 1, "values": [ 0.0 ] },
+    { "name": "Resolution", "type": "float", "count": 2, "values": [ 1920.0, 1080.0 ] },
+    { "name": "uResolution", "type": "float", "count": 2, "values": [ 1920.0, 1080.0 ] },
+    { "name": "CameraDir",  "type": "float", "count": 2, "values": [ 0.0, 0.0 ] },
+    { "name": "uCameraDir", "type": "float", "count": 2, "values": [ 0.0, 0.0 ] },
+    { "name": "Fov",        "type": "float", "count": 1, "values": [ 70.0 ] },
+    { "name": "uFov",       "type": "float", "count": 1, "values": [ 70.0 ] },
+    { "name": "Accent",     "type": "float", "count": 3, "values": [ 1.0, 1.0, 1.0 ] },
+    { "name": "uColor",     "type": "float", "count": 3, "values": [ 0.03, 0.85, 0.55 ] },
+    { "name": "uColor2",    "type": "float", "count": 3, "values": [ 0.65, 0.15, 0.85 ] },
+    { "name": "uAlpha",     "type": "float", "count": 1, "values": [ 1.0 ] },
+    { "name": "uSpeed",     "type": "float", "count": 1, "values": [ 1.0 ] },
+    { "name": "uScale",     "type": "float", "count": 1, "values": [ 5.8 ] },
+    { "name": "uIntensity", "type": "float", "count": 1, "values": [ 0.03 ] },
+    { "name": "ColorModulator", "type": "float", "count": 4, "values": [ 1.0, 1.0, 1.0, 1.0 ] }
+  ]
+}

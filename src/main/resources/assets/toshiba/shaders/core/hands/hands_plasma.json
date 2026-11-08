@@ -1,0 +1,19 @@
+{
+  "vertex": "toshiba:core/kawase_down/kawase_down",
+  "fragment": "toshiba:core/hands/hands_plasma",
+  "samplers": [
+    { "name": "Sampler0" }
+  ],
+  "uniforms": [
+    { "name": "ModelViewMat", "type": "matrix4x4", "count": 16, "values": [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0] },
+    { "name": "ProjMat", "type": "matrix4x4", "count": 16, "values": [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0] },
+    { "name": "color", "type": "float", "count": 3, "values": [0.14, 0.87, 1.0] },
+    { "name": "color2", "type": "float", "count": 3, "values": [1.0, 0.2, 0.59] },
+    { "name": "resolution", "type": "float", "count": 2, "values": [1920.0, 1080.0] },
+    { "name": "time", "type": "float", "count": 1, "values": [0.0] },
+    { "name": "speed", "type": "float", "count": 1, "values": [1.0] },
+    { "name": "scale", "type": "float", "count": 1, "values": [6.0] },
+    { "name": "fill", "type": "float", "count": 1, "values": [0.5] },
+    { "name": "alpha", "type": "float", "count": 1, "values": [1.0] }
+  ]
+}

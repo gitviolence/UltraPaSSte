@@ -1,0 +1,96 @@
+{
+  "vertex": "toshiba:core/kawase_down/kawase_down",
+  "fragment": "toshiba:core/hands/hands_fire_trail",
+  "samplers": [
+    {
+      "name": "Sampler0"
+    },
+    {
+      "name": "Sampler1"
+    },
+    {
+      "name": "Sampler2"
+    }
+  ],
+  "uniforms": [
+    {
+      "name": "ModelViewMat",
+      "type": "matrix4x4",
+      "count": 16,
+      "values": [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "name": "ProjMat",
+      "type": "matrix4x4",
+      "count": 16,
+      "values": [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "name": "resolution",
+      "type": "float",
+      "count": 4,
+      "values": [
+        1920.0,
+        1080.0,
+        0.0,
+        0.016666667
+      ]
+    },
+    {
+      "name": "settings",
+      "type": "float",
+      "count": 4,
+      "values": [
+        0.92,
+        1.25,
+        1.1,
+        1.0
+      ]
+    },
+    {
+      "name": "motion",
+      "type": "float",
+      "count": 4,
+      "values": [
+        0.0,
+        0.0,
+        -1.0,
+        0.0
+      ]
+    }
+  ]
+}

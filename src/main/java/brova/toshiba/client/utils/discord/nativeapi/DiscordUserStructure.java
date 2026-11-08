@@ -1,0 +1,21 @@
+package brova.toshiba.client.utils.discord.nativeapi;
+
+import com.sun.jna.Structure;
+import java.util.Arrays;
+import java.util.List;
+
+public class DiscordUserStructure extends Structure {
+
+    public String userId;
+
+    public String username;
+
+    public String discriminator;
+
+    public String avatar;
+
+    @Override
+    public List<String> getFieldOrder() {
+        return Arrays.asList("userId", "username", "discriminator", "avatar");
+    }
+}
